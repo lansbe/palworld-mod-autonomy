@@ -1,6 +1,6 @@
 # Palworld Autonomy
 
-An autonomous capture and gathering mod for [Palworld Mods](../palworld-mods).
+An autonomous capture and gathering mod for [Palworld Mods](https://github.com/lansbe/palworld-mods).
 The controller runs locally inside the game; no AI service, network API, desktop
 input driver or external mod loader is used.
 
@@ -45,7 +45,7 @@ rendered in the current language without resetting the running controller. Parse
 Pal and material IDs, such as `Lamball` and `Wood`, stay unchanged in every language.
 
 New features must include every translation and pass `scripts/check_localization.py`.
-See the runtime's [localization contract](../palworld-mods/docs/localization.md).
+See the runtime's [localization contract](https://github.com/lansbe/palworld-mods/blob/master/docs/localization.md).
 
 ## Develop
 
@@ -62,3 +62,10 @@ lua tests/presentation.lua
 Place this repository beside `palworld-mods` before packaging the app. Personal
 capture histories, inventories, worlds, configuration and logs are never source
 fixtures and are excluded from Git.
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and pull-request guidelines.
+The original code is available under the [MIT license](LICENSE). Third-party
+components keep their own licenses. This is an independent community project,
+not an official Pocketpair product; Palworld and its game assets are not included.
