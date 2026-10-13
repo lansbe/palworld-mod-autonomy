@@ -1,6 +1,7 @@
 -- Cooperative autonomous controller. One bounded decision per game-thread tick.
 -- Dependencies are injected so goals and interrupted transitions can be tested.
 local Rules=require('settings')
+local Text=require('presentation')
 local Runner={};Runner.__index=Runner
 local function xy(a,b)return math.sqrt((a.x-b.x)^2+(a.y-b.y)^2)end
 local function dist(a,b)return math.sqrt((a.x-b.x)^2+(a.y-b.y)^2+(a.z-b.z)^2)end
@@ -12,21 +13,26 @@ local function sphere(inv,reserve)
     -- Preserve rare spheres when ordinary ones remain.
     for _,id in ipairs(names) do if inv.counts[id]>0 then return id,count end end
 end
-function Runner.new(cfg,catalog,call,notify,materials)
+function Runner.new(cfg,catalog,call,notify,materials,translate)
     local labels={Wood='Wood',Stone='Stone'}
     for _,item in ipairs(materials or {})do labels[item.id]=item.label end
-    return setmetatable({cfg=cfg,catalog=catalog,material_labels=labels,call=call,notify=notify or function()end,phase='starting',message='Ready',skip={},events={},stats={captures=0,wood=0,stone=0,throws=0},next_scan=0,wait=0,errors=0},Runner)
+    return setmetatable({cfg=cfg,catalog=catalog,material_labels=labels,call=call,notify=notify or function()end,phase='starting',message=Text.message('status.ready'),translate=translate or function(key)return key end,skip={},events={},stats={captures=0,wood=0,stone=0,throws=0},next_scan=0,wait=0,errors=0},Runner)
 end
 function Runner:status()
-    return {phase=self.phase,message=self.message,objective=self.target and self.target.label,stats=self.stats,inventory=self.inv,origin=self.origin,events=self.events,elapsed=self.now and self.started and self.now-self.started or 0,
-        navigation=self.target and {target=self.target.target,position=self.target.position,kind=self.target.kind,waypoint=self.path and self.path[1]},performance=self.performance}
+    return {phase=self.phase,message=Text.render(self.message,self.translate),message_key=self.message.key,objective=self.target and self.target.label,stats=self.stats,inventory=self.inv,origin=self.origin,events=self:display_events(),elapsed=self.now and self.started and self.now-self.started or 0,
+        navigation=self.target and {target=self.target.target,position=self.target.position,kind=self.target.kind,waypoint=self.path and self.path[1]},performance=self.performance,diagnostics=Text.diagnostics(self.events)}
+end
+function Runner:display_events()
+    local result={}
+    for _,event in ipairs(self.events) do result[#result+1]=Text.render(event,self.translate) end
+    return result
 end
 function Runner:set(phase,message)
-    if self.phase~=phase or self.message~=message then self.phase,self.message=phase,message;self.notify(phase,message) end
+    if self.phase~=phase or not Text.same(self.message,message) then self.phase,self.message=phase,message;self.notify(phase,Text.render(message,self.translate)) end
 end
 function Runner:event(message)
     self.events[#self.events+1]=message;if #self.events>10 then table.remove(self.events,1)end
-    self.notify('event',message)
+    self.notify('event',Text.render(message,self.translate))
 end
 function Runner:stop()self.call('stop');self.path=nil;self.previous=nil end
 function Runner:level_view()
@@ -34,7 +40,7 @@ function Runner:level_view()
 end
 function Runner:reject(reason)
     if self.target then self.skip[self.target.target]=self.now+90 end
-    self:event(reason:gsub('^.-%.lua:%d+: ',''));self.target=nil;self.wait=0;self:stop();self.next_scan=0
+    self:event(type(reason)=='table' and reason or Text.failure(reason));self.target=nil;self.wait=0;self:stop();self.next_scan=0
 end
 function Runner:move_to(position,target,radius)
     local p=self.state.pose.position;local horizontal=xy(p,position)
@@ -75,11 +81,11 @@ function Runner:returning(reason,finished)
         return
     end
     if self.now<(self.return_retry or 0) then return end
-    self:set(finished and 'returning' or 'retreating',reason..' · Returning to the starting point')
-    local ok,err=pcall(self.move_to,self,self.origin,nil,180)
+    self:set(finished and 'returning' or 'retreating',Text.message('status.returning',{reason=reason}))
+    local ok=pcall(self.move_to,self,self.origin,nil,180)
     if not ok then
         self:stop();self.return_retry=self.now+2
-        self:set('blocked',reason..' · Return blocked: '..tostring(err):match('[^\n]+'))
+        self:set('blocked',Text.message('status.return_blocked',{reason=reason}))
     else self.return_retry=nil end
 end
 function Runner:choose()
@@ -111,12 +117,12 @@ function Runner:choose()
     if t then
         self.patrol=nil;self.target=t;t.started=self.now;t.before=t.kind=='capture' and (self.inv.captures[t.id] or 0) or (self.inv.counts[t.item_id] or 0)
         t.throws=0;self.path=nil;self.previous=nil;self.stuck=0;self.wait=0
-        self:set('approaching','Approaching: '..t.label)
+        self:set('approaching',Text.message('status.approaching',{target=t.label}))
     else
         if self.patrol then return end
         self:stop();self:level_view()
-        local reason=not ball and self.cfg.capture_mode~='off' and 'No spheres above the reserve' or 'No reachable target in this area'
-        self:set('searching',reason..' · Searching again')
+        local reason=not ball and self.cfg.capture_mode~='off' and Text.message('status.reserve_empty') or Text.message('status.no_target')
+        self:set('searching',Text.message('status.search_again',{reason=reason}))
         if self.cfg.explore and (ball or next(Rules.remaining_resources(self.cfg,self.inv))~=nil) and self.now>=(self.next_patrol or 0) then
             self.next_patrol=self.now+5
             local q=self.call('autonomy_patrol',{radius_m=math.min(45,self.cfg.radius)})
@@ -136,18 +142,18 @@ function Runner:observe()
         if t.kind=='capture' then self.stats.captures=self.stats.captures+n
         elseif t.item_id=='Wood' then self.stats.wood=self.stats.wood+n elseif t.item_id=='Stone' then self.stats.stone=self.stats.stone+n end
         self.stats.resources=self.stats.resources or {};if t.item_id then self.stats.resources[t.item_id]=(self.stats.resources[t.item_id] or 0)+n end
-        self:event(t.label..' : +'..n);self.skip[t.target]=self.now+3;self.target=nil;self:stop();self.next_scan=0;return
+        self:event(Text.message('status.collected',{target=t.label,count=n}));self.skip[t.target]=self.now+3;self.target=nil;self:stop();self.next_scan=0;return
     end
     return false
 end
 function Runner:target_step()
     local t=self.target
-    if self.now-self.target.started>150 then self:reject('Target timed out: '..t.label);return end
+    if self.now-self.target.started>150 then self:reject(Text.message('status.target_timeout',{target=t.label}));return end
     if self.now<(t.next_result or 0) then return end
     local actor=self.call('autonomy_actor',{target=t.target});t.position=actor.position
     if t.kind=='capture' then
         local c=actor.character
-        if actor.player or not actor.wild or actor.uncapturable or not c or c.dead or c.dying then self:reject('Target is no longer available');return end
+        if actor.player or not actor.wild or actor.uncapturable or not c or c.dead or c.dying then self:reject(Text.message('status.target_gone'));return end
         if actor.capturing then t.next_result=self.now+1;return end
         if not Rules.wanted(self.cfg,self.inv.captures,t.id) then self.target=nil;self:stop();return end
         if not self:move_to(actor.position,t.target,self.cfg.weaken and c.hp_ratio>.4 and 130 or 420) then return end
@@ -156,25 +162,25 @@ function Runner:target_step()
             assert(game.melee,'Weakening requires a melee weapon')
             if t.last_hp then t.hit=math.max(t.hit or 0,t.last_hp-c.hp_ratio)end
             if not t.hit or c.hp_ratio>t.hit*1.8+.12 then
-                self:set('weakening','Weakening: '..t.label)
+                self:set('weakening',Text.message('status.weakening',{target=t.label}))
                 if self.call('aim_at',{target=t.target,melee=true,smooth=true}).aligned==false then return end
                 t.last_hp=c.hp_ratio
                 self.call('move',{forward=1,seconds=.15});self.call('act',{name='fire',seconds=.25});self.wait=self.now+1.1;return
             end
         end
-        if t.throws>=self.cfg.max_throws then self:reject('Sphere limit reached: '..t.label);return end
+        if t.throws>=self.cfg.max_throws then self:reject(Text.message('status.sphere_limit',{target=t.label}));return end
         local ball=sphere(self.inv,self.cfg.sphere_reserve)
-        if not ball then self:reject('No spheres available');return end
+        if not ball then self:reject(Text.message('status.no_spheres'));return end
         if self.call('aim_at',{target=t.target,smooth=true}).aligned==false then return end
         self.call('autonomy_ball',{id=ball})
         self.call('act',{name='throw_object',seconds=.65})
         t.throws=t.throws+1;self.stats.throws=self.stats.throws+1;t.last_throw=self.now;t.next_result=self.now+10
-        self:set('capturing','Capture : '..t.label..' · Attempt '..t.throws)
+        self:set('capturing',Text.message('status.capturing',{target=t.label,count=t.throws}))
     else
         -- Shoreline pickups may lie below the walkable surface. Do not keep
         -- returning to the projected navmesh edge while their height is unreachable.
         if t.kind=='pickup' and xy(self.state.pose.position,actor.position)<600 and self.state.pose.position.z-actor.position.z>260 then
-            self:reject('Pickup is below the walkable surface: '..t.label);return
+            self:reject(Text.message('status.pickup_below',{target=t.label}));return
         end
         if not self:move_to(actor.position,t.target,t.kind=='node' and 240 or 160) then return end
         if self.call('aim_at',{target=t.target,melee=t.kind=='node',smooth=true}).aligned==false then return end
@@ -182,22 +188,22 @@ function Runner:target_step()
             local game=self.call('gameplay')
             if game.interaction_target and game.interaction_target.object==t.interaction then
                 self.call('act',{name='interact',seconds=.3});t.next_result=self.now+1.2
-                self:set('gathering','Picking up: '..t.label)
+                self:set('gathering',Text.message('status.picking_up',{target=t.label}))
             else
                 t.aligns=(t.aligns or 0)+1
-                if t.aligns>8 then self:reject('Interaction is unreachable: '..t.label);return end
+                if t.aligns>8 then self:reject(Text.message('status.unreachable',{target=t.label}));return end
                 self.call('move',{forward=1,seconds=.12});self.wait=self.now+.4
             end
         else
             assert(self.call('gameplay').melee,'Gathering requires a melee weapon')
             self.call('act',{name='fire',seconds=.7});self.wait=self.now+1.1
-            self:set('gathering','Gathering: '..t.label)
+            self:set('gathering',Text.message('status.gathering',{target=t.label}))
         end
     end
 end
 function Runner:flee()
     self.target=nil;self.patrol=nil;self.recovering=true
-    if not self.state.in_combat then self:stop();self.escape=nil;self.escape_search=nil;self:set('resting','Recovering health');return end
+    if not self.state.in_combat then self:stop();self.escape=nil;self.escape_search=nil;self:set('resting',Text.message('status.recovering'));return end
     if self.escape and self.now>(self.escape_until or 0) then self.escape=nil;self.escape_search=nil end
     if not self.escape then
         -- Keep streaming observations current while recovering, and spread the
@@ -209,7 +215,7 @@ function Runner:flee()
         end
         local search=self.escape_search
         if search then
-            self:set('retreating','Finding a retreat route')
+            self:set('retreating',Text.message('status.find_retreat'))
             local candidate=self.call('autonomy_patrol',{radius_m=45}).position
             if candidate and xy(candidate,self.state.pose.position)>1500 then
                 local distance=100000
@@ -224,10 +230,10 @@ function Runner:flee()
         end
         -- Do not add a fifth path search to the last candidate's decision.
         self:stop()
-        if not self.escape and not self.escape_search then self:set('blocked','Retreat blocked: no walkable path') end
+        if not self.escape and not self.escape_search then self:set('blocked',Text.message('status.retreat_blocked')) end
         return
     end
-    self:set('retreating','Retreating to recover health')
+    self:set('retreating',Text.message('status.retreating'))
     local ok,arrived=pcall(self.move_to,self,self.escape,nil,180)
     if not ok or arrived then self.escape=nil;self:stop()end
 end
@@ -235,7 +241,7 @@ function Runner:tick(now,state)
     self.now=now
     state=state or self.call('state',{light=true});self.state=state
     if not state.playable then
-        self:stop();self.wait=0;self:set('paused',state.dead and 'Player defeated: autonomy stopped' or state.phase=='world' and 'Paused while menus are open' or 'Waiting for the player');return
+        self:stop();self.wait=0;self:set('paused',state.dead and Text.message('status.defeated') or state.phase=='world' and Text.message('status.menu_pause') or Text.message('status.waiting'));return
     end
     if not self.origin then self.origin=state.pose.position;self.started=now end
     if not self.inv or now>=(self.next_inventory or 0) then
@@ -243,7 +249,7 @@ function Runner:tick(now,state)
     end
     if self.target then self:observe() end
     if self.pending_food and (self.inv.counts[self.pending_food.requested] or 0)<self.pending_food.before then
-        self:event('Food consumed');self.pending_food=nil
+        self:event(Text.message('status.food_consumed'));self.pending_food=nil
     end
     if self.cfg.eat and self.inv.hunger<.5 and now>=(self.next_food or 0) then
         self.pending_food=self.call('autonomy_food');self.next_food=now+5
@@ -251,22 +257,22 @@ function Runner:tick(now,state)
     if (state.hp_ratio or 0)<self.cfg.health/100 then self:flee();return end
     if self.recovering then
         if state.in_combat then self:flee();return end
-        if state.hp_ratio<math.min(.98,self.cfg.health/100+.25) then self:stop();self:set('resting','Recovering health');return end
-        self.recovering=false;self.escape=nil;self.escape_search=nil;self:event('Health recovered')
+        if state.hp_ratio<math.min(.98,self.cfg.health/100+.25) then self:stop();self:set('resting',Text.message('status.recovering'));return end
+        self.recovering=false;self.escape=nil;self.escape_search=nil;self:event(Text.message('status.recovered'))
     end
-    if self.finished then self:set('complete',self.finish_reason or 'Goals completed');return end
+    if self.finished then self:set('complete',self.finish_reason or Text.message('status.complete'));return end
     local complete=Rules.complete(self.cfg,self.inv,self.catalog)
     if complete or now-self.started>=self.cfg.session_minutes*60 then
-        self.finish_reason=complete and 'Goals completed' or 'Session time reached'
+        self.finish_reason=complete and Text.message('status.complete') or Text.message('status.session_end')
         if state.in_combat then self:flee()
         elseif self.cfg.return_home then self:returning(self.finish_reason,true)
         else self:stop();self:level_view();self.finished=true;self:set('complete',self.finish_reason) end
         return
     end
     if self.inv.max_weight>0 and self.inv.weight>=self.inv.max_weight*.9 then
-        self:returning('Inventory almost full: empty the bag',false);return
+        self:returning(Text.message('status.inventory_full'),false);return
     end
-    if self.inv.hunger<.12 then self:stop();self:set('blocked','Food is required');return end
+    if self.inv.hunger<.12 then self:stop();self:set('blocked',Text.message('status.food_needed'));return end
     -- Evade a new hit while awaiting capture; held inputs still expire on their own.
     if self.last_hp and state.hp_ratio<self.last_hp-.015 and now>=(self.next_dodge or 0)
         and self.target and self.target.kind=='capture' and now>(self.target.last_throw or -10)+1 then
@@ -274,14 +280,14 @@ function Runner:tick(now,state)
     end
     self.last_hp=state.hp_ratio
     local scan=self.call('autonomy_scan',{radius_m=self.cfg.radius,capture=self.cfg.capture_mode~='off'})
-    if not scan.ready then self:stop();self:set('searching','Observing the area');return end
+    if not scan.ready then self:stop();self:set('searching',Text.message('status.observing'));return end
     if now<self.wait then return end
     if self.target then
         local ok,err=pcall(self.target_step,self)
         if not ok then self:reject(tostring(err):match('[^\n]+')) end
     elseif now>=self.next_scan then self:choose()end
     if not self.target and self.patrol then
-        self:set('exploring','Exploring the area')
+        self:set('exploring',Text.message('status.exploring'))
         local ok,arrived=pcall(self.move_to,self,self.patrol,nil,200)
         if not ok or arrived or now>self.patrol_until then self.patrol=nil;self:stop();self.next_scan=0 end
     end

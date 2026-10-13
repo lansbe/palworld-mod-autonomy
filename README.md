@@ -34,6 +34,19 @@ The first independent release preserves the controller and validates its state
 machine, native observations and installation. Full capture/gather sessions on
 the new native runtime remain a separate gameplay validation requirement.
 
+## Language
+
+Requires Palworld Mods 0.3.0 or later. All labels, choices and hints follow the
+shared **Options → Mods → Language** preference. Automatic uses the actual game
+language; manual selection persists between sessions. All 17 locales ship in
+`locales/*.json`, with stable keys and an English fallback. Settings keep their
+original IDs when the display language changes. Status and event messages are
+rendered in the current language without resetting the running controller. Parsed
+Pal and material IDs, such as `Lamball` and `Wood`, stay unchanged in every language.
+
+New features must include every translation and pass `scripts/check_localization.py`.
+See the runtime's [localization contract](../palworld-mods/docs/localization.md).
+
 ## Develop
 
 `runner.lua` contains the injected decision state machine. `settings.lua` holds
@@ -43,6 +56,7 @@ no copy of an external loader or another mod is included.
 ```sh
 python3 scripts/verify.py
 lua tests/runner.lua
+lua tests/presentation.lua
 ```
 
 Place this repository beside `palworld-mods` before packaging the app. Personal

@@ -15,4 +15,6 @@ jobs:
       - name: Check source
         run: python3 scripts/verify.py
       - name: Test
-        run: lua tests/runner.lua
+        run: |
+          lua tests/runner.lua
+          lua tests/presentation.lua

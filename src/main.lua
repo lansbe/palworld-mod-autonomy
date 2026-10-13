@@ -2,6 +2,7 @@ local Rules=require('settings')
 local Runner=require('runner')
 local Backend=require('backend')
 local catalog=require('catalog')
+local Text=require('presentation')
 local materials={}
 for _,id in ipairs({'Wood','Stone','Pal_crystal_S','CopperOre','Coal','Sulfur','Quartz','Fiber','Berries','Mushroom'}) do
     materials[#materials+1]={id=id,label=id}
@@ -13,19 +14,19 @@ local backend=Backend.new()
 local runner
 local function stop()
     api.settings.running=false
-    if runner then runner:stop();runner:set('off','Stopped') end
+    if runner then runner:stop();runner:set('off',Text.message('status.stopped')) end
     backend:stop()
 end
 local function start()
     local state=api.game.state()
-    assert(state.phase=='world' and not state.dead and not state.loading,'Join a world before starting autonomy')
-    runner=Runner.new(config,catalog,function(action,args)return backend:call(action,args or {})end,nil,materials)
+    assert(state.phase=='world' and not state.dead and not state.loading,api.translate('error.join_world'))
+    runner=Runner.new(config,catalog,function(action,args)return backend:call(action,args or {})end,nil,materials,api.translate)
     api.settings.running=true
 end
 api.on_stop(stop)
 api.on_travel(stop)
 api.on_toggle(function(enabled) if not enabled then stop() end end)
-api.provide('status',function() return runner and runner:status() or {phase='off',message='Stopped'} end)
+api.provide('status',function() return runner and runner:status() or {phase='off',message=api.translate('status.stopped'),message_key='status.stopped'} end)
 api.provide('start',start)
 api.provide('stop',stop)
 api.provide('catalog',function() return catalog end)
@@ -45,5 +46,5 @@ api.every(.1,function()
     if state.dead then stop();return end
     local ok,failure=xpcall(function()runner:tick(Engine.clock(),state)end,api.traceback)
     if ok and runner.finished then api.settings.running=false end
-    if not ok then stop();runner:set('error',tostring(failure):match('[^\n]+'));error(failure) end
+    if not ok then stop();runner:set('error',Text.message('status.failed'));error(failure) end
 end)

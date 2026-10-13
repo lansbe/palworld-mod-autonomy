@@ -57,7 +57,7 @@ r=Runner.new(cfg({capture_mode='off',wood=2}),cat,function(a,c)
  if a=='stop' then return {}end
  error('Action before observation finished: '..a)
 end)
-r:tick(0);assert(r.phase=='searching' and r.message=='Observing the area' and not r.target)
+r:tick(0);assert(r.phase=='searching' and r.message.key=='status.observing' and not r.target)
 
 -- Static routes survive the old four-second replan deadline. Moving capture
 -- targets still refresh their route; prolonged movement is not a unit-test wait.
