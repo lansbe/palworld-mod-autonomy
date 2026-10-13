@@ -24,7 +24,7 @@ local controller act inside the game. No AI account or MCP client is required.
 
 No separate mod download or game restart is needed. Requires Apple silicon,
 macOS 14+, the supported Mac App Store game (app 1.0.8, build 102999), and
-Palworld Mods 0.3.0 or newer. Use the latest app for fixes.
+Palworld Mods 0.4.3 or newer for the complete native settings menu.
 The [app guide](https://github.com/lansbe/palworld-mods#install-in-five-steps)
 also covers macOS first-launch approval.
 
@@ -44,31 +44,31 @@ and aligns the camera before actions. Capture history confirms captures;
 inventory changes confirm gathering. Travel or disabling releases held inputs,
 and death stops the session. It does not spawn supplies or bypass the host's rules.
 
-### Advanced goals and current menu limitation
+### Configure advanced goals in the game
 
-The controller supports selected species, materials, a search radius, a level
-ceiling, sphere reserves, retreat health and a session time limit.
+Open **Options → Mods → Autonomy**. Every setting is available here; scroll down
+for exploration, food, returning home and the session time limit.
 
-| Goal | Value |
+| Goal | Native setting |
 | --- | --- |
-| Bring lifetime captures up to a target | All species, with a captures-per-species quota. |
-| Capture selected species | Selected, with targets such as **Lamball=5; Cattiva=3**. |
-| Gather resources | Materials such as **Wood=100; Stone=50**, or the Wood/Stone goals. |
-| Gather without capturing | Capture mode Off, with material goals set. |
+| Bring lifetime captures up to a target | **Capture → All species**, then **Captures per species**. |
+| Capture selected species | Enter **Lamball=5; Cattiva=3** in **Capture targets**, then choose **Capture → Selected**. |
+| Gather resources | Enter **Wood=100; Stone=50** in **Materials**, or use the **Wood** and **Stone** sliders. |
+| Gather without capturing | Set material goals first, then choose **Capture → Off**. |
 
-**Known issue in Palworld Mods 0.4.2:** in the documented session, the native
-Autonomy panel stopped at Capture targets, showing an inactive Execute control.
-The text fields and later settings were not available in that session. Do not
-expect to configure all advanced goals from that panel until this is fixed.
+Click a text field to edit it, then press **Enter** or click another control to
+save. Use `name=quantity` entries separated by semicolons. Do not specify Wood or
+Stone in both the text field and its dedicated slider. Invalid text shows an
+error beside the field and keeps the last valid saved value; correct it to save.
+Settings are remembered when you close the menu and restart the game.
 
-Advanced users can configure those goals through the optional
-[Palworld MCP bridge](https://github.com/lansbe/palworld-mcp). With the game open,
-this example sets goals while keeping the controller stopped:
+You can also change the search radius, maximum Pal level, retreat health, sphere
+reserve, throws per target and melee weakening. Keep **Running** off while
+preparing goals, then turn it on in a world when ready. It never starts
+automatically when you launch the game.
 
-    ~/.local/bin/palworld-mcp call mods.configure '{"mod":"autonomy","settings":{"running":false,"capture_mode":"selected","targets":"Lamball=5; Cattiva=3","materials":"Wood=100; Stone=50"}}'
-
-Parsed Pal/material identifiers stay the same in every language. Start Running
-only after reviewing your goals and supplies.
+Parsed Pal/material identifiers stay the same in every language. No MCP client,
+terminal command or external settings window is required.
 
 ## Optional: keep Minimap visible
 
